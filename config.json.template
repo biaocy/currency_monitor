@@ -1,8 +1,8 @@
 {
-	"currency": "btcusdt"
-	,"price_format": ".2F"
-	,"url": "wss://api.huobi.pro/ws"
-	,"operator": "<="
-	,"email": "youremail"
-	,"threshold": "10000"
+	"currency": "btcusdt",
+	"email": "youremail",
+	"operator": "<=",
+	"price_format": ".2F",
+	"threshold": "10000",
+	"url": "wss://api.huobi.pro/ws"
 }
