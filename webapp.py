@@ -8,7 +8,7 @@ from functools import wraps
 from hmac import compare_digest as compare_hash
 from flask import Flask, session, request, redirect, url_for, escape, json
 
-if not os.environ['config']:
+if not os.environ.get('config'):
     raise ValueError('config must specified!')
 
 config_path = os.path.expanduser(os.environ['config'])
