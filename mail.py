@@ -3,11 +3,12 @@
 import smtplib
 from email.mime.text import MIMEText
 
-msg = MIMEText('What the fox say')
-msg['Subject'] = 'The contents of email'
-msg['From'] = 'Fox'
-msg['To'] = 'biaocy@foxmail.com'
+def sendmail(content, to, mfrom='Fox', subject='Currency Monitor'):
+    msg = MIMEText(content)
+    msg['Subject'] = subject
+    msg['From'] = mfrom
+    msg['To'] = to
 
-s = smtplib.SMTP('localhost')
-s.send_message(msg)
-s.quit()
+    s = smtplib.SMTP('localhost')
+    s.send_message(msg)
+    s.quit()
