@@ -8,9 +8,9 @@ import websocket
 import gzip
 import json
 import time
-from datetime import datetime
 import safeeval as se
 import argparse
+from datetime import datetime
 try:
     import threading
 except ImportError:
@@ -125,22 +125,25 @@ def parse_arg():
     default_operator = '>='
     
     """argument precedence: optional argument > config file > default"""
-    parser = argparse.ArgumentParser(description='monitor cryptocurrency')
+    parser = argparse.ArgumentParser(description='cryptocurrency monitor')
     parser.add_argument('-c', '--currency', dest='currency', 
-        help='currency to monitor, default: '+default_currency)
+            help='currency to monitor, default: '+default_currency)
     parser.add_argument('-f', '--price-format', dest='price_format', 
-        help='price convert format, default: '+default_price_format)
+            help='price convert format, default: '+default_price_format)
     parser.add_argument('-l', '--url', dest='url', 
-        help='api url, default: '+default_url)
+            help='api url, default: '+default_url)
     parser.add_argument('-C', '--config', dest='config', 
-        help='''configuration file, json format. If same argument exists in
-        config and optional augment, optional argument takes precedence!''')
+            help='configuration file, json format. If same argument exists' \
+            ' in config and optional augment, optional argument takes' \
+            ' precedence!')
     parser.add_argument('-t', '--threshold', dest='threshold', 
-        help='threshold price to notify')
-    parser.add_argument('-o', '--operator', dest='operator', 
-        help='operator to compare threshold price, default: '+default_operator)
+            help='threshold price to notify')
+    parser.add_argument('-o', '--operator', dest='operator',
+            choices=['>', '>=', '<', '<='],
+            help='operator to compare threshold price, default: '
+            +default_operator)
     parser.add_argument('-e', '--email', dest='email', 
-        help='email address to notify')
+            help='email address to notify')
     args = parser.parse_args()
   
     global _CONF_PATH_
