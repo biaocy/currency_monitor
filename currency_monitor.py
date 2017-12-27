@@ -19,13 +19,18 @@ except ImportError:
 class Monitor:
     def __init__(self, config):
         self.config = {}
+        self.ws = None
         self.reset(config)
 
     def reset(self, config):
+        if self.ws and self.currency != config.get('currency', self.currency):
+            self.unsubscribe(self.currency)
+            self.subscribe(config.get('currency'))
         self.config.update(config)
         self.url = self.config['url']
         self.currency = self.config['currency']
-        self.price_format = '{{0:{0}}}'.format(self.config['price_format']) # {0:.2F}
+        # {0:.2F}
+        self.price_format = '{{0:{0}}}'.format(self.config['price_format']) 
         self.threshold = self.config['threshold']
         self.email = self.config['email']
         self.operator = self.config['operator']
@@ -48,8 +53,8 @@ class Monitor:
             ws.send(pong)
         elif data.get('tick'):
             tsformat = '%Y-%m-%d %X'
-            ts = data.get('ts')
-            dts = datetime.fromtimestamp(ts / 1000).strftime(tsformat) if ts else datetime.now().strftime(tsformat)
+            ts = data.get('ts', datetime.now())
+            dts = datetime.fromtimestamp(ts / 1000).strftime(tsformat)
             price = self.price_format.format(data['tick'].get('close'))
             print(dts+',', self.currency+':', price)
             self.notify_if_exceed_threshold(price)
@@ -61,10 +66,19 @@ class Monitor:
 
     def on_close(self, ws):
         print('### closed ###')
-        t.join()
+        #t.join(2)
 
     def on_open(self, ws):
-        ws.send('{{"sub": "market.{0}.detail", "id": "{0}.detail"}}'.format(self.currency))
+        self.subscribe(self.currency)
+
+    def subscribe(self, currency):
+        temp = '{{"sub": "market.{0}.detail", "id": "{0}.detail"}}'
+        print(temp.format(currency))
+        self.ws.send(temp.format(currency))
+
+    def unsubscribe(self, currency):
+        temp = '{{"unsub": "market.{0}.detail", id": "{0}.detail"}}'
+        self.ws.send(temp.format(currency))
 
     def start(self):
         #websocket.enableTrace(True)
@@ -73,12 +87,14 @@ class Monitor:
                 on_message = self.on_message, 
                 on_error = self.on_error, 
                 on_close = self.on_close)
+        self.ws = ws
         ws.run_forever()
 
 def run():
     global _CONF_PATH_
     global _LAST_MTIME_
-    while os.path.exists(os.path.expanduser(_CONF_PATH_)):  # while configuration file specified and exists
+    # while configuration file specified and exists
+    while os.path.exists(os.path.expanduser(_CONF_PATH_)):  
         lastmtime = os.stat(_CONF_PATH_).st_mtime
         if lastmtime > _LAST_MTIME_:
             _LAST_MTIME_ = lastmtime
@@ -110,13 +126,21 @@ def parse_arg():
     
     """argument precedence: optional argument > config file > default"""
     parser = argparse.ArgumentParser(description='monitor cryptocurrency')
-    parser.add_argument('-c', '--currency', dest='currency', help='currency to monitor, default: '+default_currency)
-    parser.add_argument('-f', '--price-format', dest='price_format', help='price convert format, default: '+default_price_format)
-    parser.add_argument('-l', '--url', dest='url', help='api url, default: '+default_url)
-    parser.add_argument('-C', '--config', dest='config', help='configuration file, json format. If same argument specified in config and optional augment, optional argument takes precedence!')
-    parser.add_argument('-t', '--threshold', dest='threshold', help='threshold price to notify')
-    parser.add_argument('-o', '--operator', dest='operator', help='operator to compare threshold price, default: '+default_operator)
-    parser.add_argument('-e', '--email', dest='email', help='email address to notify')
+    parser.add_argument('-c', '--currency', dest='currency', 
+        help='currency to monitor, default: '+default_currency)
+    parser.add_argument('-f', '--price-format', dest='price_format', 
+        help='price convert format, default: '+default_price_format)
+    parser.add_argument('-l', '--url', dest='url', 
+        help='api url, default: '+default_url)
+    parser.add_argument('-C', '--config', dest='config', 
+        help='''configuration file, json format. If same argument exists in
+        config and optional augment, optional argument takes precedence!''')
+    parser.add_argument('-t', '--threshold', dest='threshold', 
+        help='threshold price to notify')
+    parser.add_argument('-o', '--operator', dest='operator', 
+        help='operator to compare threshold price, default: '+default_operator)
+    parser.add_argument('-e', '--email', dest='email', 
+        help='email address to notify')
     args = parser.parse_args()
   
     global _CONF_PATH_
@@ -161,9 +185,8 @@ if __name__ == '__main__':
     _MONITOR_ = None     # Monitor instance
 
     config = parse_arg()
-    print(_CONF_PATH_, _LAST_MTIME_)
     print(config)
     _MONITOR_ = Monitor(config)
-    t = threading.Thread(target=run)
+    t = threading.Thread(target=run, daemon=True)
     t.start()
-    #_MONITOR_.start();
+    _MONITOR_.start()
