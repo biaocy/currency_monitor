@@ -4,6 +4,6 @@
 	"notify": false,
 	"operator": ">=",
 	"price_format": ".2F",
-	"threshold": "",
+	"threshold": 10000,
 	"url": "wss://api.huobi.pro/ws"
 }
