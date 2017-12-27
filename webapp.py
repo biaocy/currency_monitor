@@ -40,7 +40,7 @@ def make_session_permanent():
     app.permanent_session_lifetime = timedelta(minutes=30)
 
 
-@app.route('/l', methods=['GET', 'POST'])
+@app.route('/', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         hashed = crypt.crypt(request.form[pass_field], rhashed)
@@ -84,12 +84,22 @@ def delconfig(keys):
 @app.route('/config/<string:conf>')
 @login_required
 def config(conf):
-    session['abc'] = 'wtf'
+    bool_val = {
+                'false': False,
+                'true': True
+                }
     d = {}
     for p in conf.split(','):
         idx = p.find('=')
         if idx >= 1:    # key-pair exists, key at least 1 character
-            d[p[:idx]] = p[idx+1:]
+            val = p[idx+1:]
+            if val in bool_val:
+                rval = bool_val[val]
+            elif val.isnumeric():
+                rval = nums(val)
+            else:
+                rval = val
+            d[p[:idx]] = rval
 
     with open(config_path) as f:
         config = json.load(f)
@@ -100,3 +110,13 @@ def config(conf):
         json.dump(config, f, indent='\t', sort_keys=True)
     
     return json.jsonify(config)
+
+def nums(str):
+    """Convert a numeric string to number
+
+    str -- numeric string
+    """
+    try:
+        return int(str)
+    except ValueError:
+        return float(str)
