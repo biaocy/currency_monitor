@@ -10,11 +10,14 @@ import json
 import time
 import safeeval as se
 import argparse
+import mail
 from datetime import datetime
 try:
     import threading
 except ImportError:
     import dummy_threading as threading
+
+tsformat = '%Y-%m-%d %X'
 
 class Monitor:
     def __init__(self, config):
@@ -24,8 +27,10 @@ class Monitor:
 
     def reset(self, config):
         if self.ws and self.currency != config.get('currency', self.currency):
-            self.unsubscribe(self.currency)
-            self.subscribe(config.get('currency'))
+            # currency change, should unsubscribe then subscribe
+            # but server will close connection after unsubscribe
+            # so close directly and re-conect in callback on_close
+            self.ws.close()
         self.config.update(config)
         self.url = self.config['url']
         self.currency = self.config['currency']
@@ -36,28 +41,45 @@ class Monitor:
         self.operator = self.config['operator']
 
     def notify_if_exceed_threshold(self, price):
-        if not (self.threshold and self.email and self.operator):
-            return
         expr = '{0}{1}{2}'.format(price, self.operator, self.threshold)
-        if se.seval(expr):  # notify
-            print(expr, True)
-        else:
-            print(expr, False)
+        if not se.seval(expr):
+            return
+
+        if not self.config.get('notify', False):
+            return
+        if not (self.threshold and self.email and self.operator):
+            temp = 'threshold: {0}, email: {1}, operator: {2}. \
+                    Something not set, email not send'
+            print(temp.format(self.threshold, self.email, self.operator))
+            return
+        
+        print('sent mail')
+
+        #mailopt = {}
+        #mailopt['content'] = self.config.get('mail.content', expr)
+        #mailopt['to'] = self.email
+        #mail.sendmail(**mailopt)
 
     def on_message(self, ws, msg):
         demsg = gzip.decompress(msg).decode('utf-8')
         data = json.loads(demsg)
+        ts = data.get('ts', datetime.now().timestamp()*1000)
+        dts = datetime.fromtimestamp(ts/1000).strftime(tsformat)
         if data.get('ping'):
             ts = data['ping']
             pong = '{{"pong": {0}}}'.format(ts)
             ws.send(pong)
         elif data.get('tick'):
-            tsformat = '%Y-%m-%d %X'
-            ts = data.get('ts', datetime.now())
-            dts = datetime.fromtimestamp(ts / 1000).strftime(tsformat)
             price = self.price_format.format(data['tick'].get('close'))
-            print(dts+',', self.currency+':', price)
+            ch = data['ch'].split('.')[1]
+            print(dts+',', ch+':', price)
             self.notify_if_exceed_threshold(price)
+#        elif data.get('unsubbed'):
+#            print(dts+',', 'unsubbed: '+data.get('unsubbed'))
+#            time.sleep(10) # wait 10 sec to re-sub
+#            self.subscribe(self.currency)
+#        elif data.get('subbed'):
+#            print(dts+',', 'subbed: '+data.get('subbed'))
         else:
             print('unknown message', demsg)
 
@@ -65,15 +87,15 @@ class Monitor:
         print(error)
 
     def on_close(self, ws):
-        print('### closed ###')
-        #t.join(2)
+        print('{0}, close connection, wait 5 sec to re-connect'.format(datetime.now().strftime(tsformat)))
+        time.sleep(5)
+        self.start()
 
     def on_open(self, ws):
         self.subscribe(self.currency)
 
     def subscribe(self, currency):
         temp = '{{"sub": "market.{0}.detail", "id": "{0}.detail"}}'
-        print(temp.format(currency))
         self.ws.send(temp.format(currency))
 
     def unsubscribe(self, currency):
@@ -118,11 +140,28 @@ def parse_config():
 
     return config
 
+
+def set_arg(args, config, attr, default_val):
+    """Set config's attribute
+    Precedent: args > config > default_val
+    
+    args        --  arguments parse from command line
+    config      --  program config object
+    attr        --  attribute name
+    default_val --  attribute default value
+    """
+    val = getattr(args, attr)
+    if val:
+        config[attr] = val
+    else:
+        config.setdefault(attr, default_val)
+
 def parse_arg():
     default_url = 'wss://api.huobi.pro/ws'
     default_currency = 'btcusdt'
     default_price_format = '.2F'
     default_operator = '>='
+    default_threshold = 10000
     
     """argument precedence: optional argument > config file > default"""
     parser = argparse.ArgumentParser(description='cryptocurrency monitor')
@@ -133,52 +172,38 @@ def parse_arg():
     parser.add_argument('-l', '--url', dest='url', 
             help='api url, default: '+default_url)
     parser.add_argument('-C', '--config', dest='config', 
-            help='configuration file, json format. If same argument exists' \
-            ' in config and optional augment, optional argument takes' \
-            ' precedence!')
-    parser.add_argument('-t', '--threshold', dest='threshold', 
-            help='threshold price to notify')
+            help='configuration file, json format. If same argument exists \
+            in config and optional augment, optional argument takes \
+            precedence!')
+    parser.add_argument('-t', '--threshold', dest='threshold',
+            help='threshold price to notify, default: '+str(default_threshold))
     parser.add_argument('-o', '--operator', dest='operator',
             choices=['>', '>=', '<', '<='],
             help='operator to compare threshold price, default: '
             +default_operator)
     parser.add_argument('-e', '--email', dest='email', 
             help='email address to notify')
+    parser.add_argument('-n', '--notify', dest='notify', action='store_true',
+            help='If present, notify when currency price exceed threshold, \
+                    otherwise not notify')
     args = parser.parse_args()
   
     global _CONF_PATH_
     _CONF_PATH_ = args.config
     config = parse_config()
 
-    if args.currency:
-        config['currency'] = args.currency
-    else:
-        config.setdefault('currency', default_currency)
+    argdict = {
+            'currency':     default_currency,
+            'price_format': default_price_format,
+            'url':          default_url,
+            'operator':     default_operator,
+            'notify':       False,
+            'email':        None,
+            'threshold':    default_threshold
+            }
 
-    if args.price_format:
-        config['price_format'] = args.price_format
-    else:
-        config.setdefault('price_format', default_price_format)
-    
-    if args.url:
-        config['url'] = args.url
-    else:
-        config.setdefault('url', default_url)
-
-    if args.operator:
-        config['operator'] = args.operator
-    else:
-        config.setdefault('operator', default_operator)
-
-    if args.email:
-        config['email'] = args.email
-    else:
-        config.setdefault('email')
-
-    if args.threshold:
-        config['threshold'] = args.threshold
-    else:
-        config.setdefault('threshold')
+    for k, v in argdict.items():
+        set_arg(args, config, k, v)
 
     return config
 
