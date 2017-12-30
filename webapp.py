@@ -93,22 +93,19 @@ def config(conf):
         idx = p.find('=')
         if idx >= 1:    # key-pair exists, key at least 1 character
             val = p[idx+1:]
-            if val in bool_val:
+            if val in bool_val:     # boolean value
                 rval = bool_val[val]
+            elif '|' in val:        # list value
+                rval = [v for v in val.split('|') if v] # non empty
             elif val.isnumeric():
                 rval = nums(val)
             else:
                 rval = val
             d[p[:idx]] = rval
 
-    with open(config_path) as f:
-        config = json.load(f)
-
+    config = read_config()
     config.update(d)
-
-    with open(config_path, 'w') as f:
-        json.dump(config, f, indent='\t', sort_keys=True)
-    
+    write_config(config)
     return json.jsonify(config)
 
 def nums(str):
