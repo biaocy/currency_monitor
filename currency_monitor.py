@@ -20,6 +20,7 @@ except ImportError:
 
 tsformat = '%Y-%m-%d %X'
 logging_file_path = '/var/log/huobi/{0}.log'
+logger_format = '%(asctime)s, %(message)s, %(levelname)s'
 last_time_send_mail = None  # last timestamp send mail
 send_mail_interval = 1800   # send mail interval(seconds)
 
@@ -28,16 +29,21 @@ class Monitor:
         self.config = {}
         self.ws = None
         self.reset(config)
+        # setup root logger
+        logging.basicConfig(
+                filename=logging_file_path.format('monitor'), 
+                format=logger_format, 
+                level=logging.INFO)
 
     def reset(self, config):
-        if self.ws and self.currency != config.get('currency', self.currency):
-            # currency change, should unsubscribe then subscribe
+        if self.ws and self.currencies != config.get('currencies', self.currencies):
+            # currencies change, should unsubscribe then subscribe
             # but server will close connection after unsubscribe
             # so close directly and re-conect in callback on_close
             self.ws.close()
         self.config.update(config)
         self.url = self.config['url']
-        self.currency = self.config['currency']
+        self.currencies = self.config['currencies']
         self.reset_logger()
         # {0:.2F}
         self.price_format = '{{0:{0}}}'.format(self.config['price_format']) 
@@ -46,12 +52,19 @@ class Monitor:
         self.operator = self.config['operator']
 
     def reset_logger(self):
-        logger = logging.getLogger()
-        for hdlr in logger.handlers[:]:
-            logger.removeHandler(hdlr)
-        logging.basicConfig(filename=logging_file_path.format(self.currency), format='%(message)s, %(levelname)s', level=logging.INFO)
+        formatter = logging.Formatter(logger_format, datefmt=tsformat)
+        for c in self.currencies:
+            logger = logging.getLogger(c)
+            logger.propagate = False            # disable logger propagate
+            if not logger.hasHandlers():
+                fh = logging.FileHandler(logging_file_path.format(c))
+                fh.setLevel(logging.INFO)
+                fh.setFormatter(formatter)
+                logger.addHandler(fh)
+            
 
-    def notify_if_exceed_threshold(self, price):
+
+    def notify_if_exceed_threshold(self, price, currency):
         expr = '{0}{1}{2}'.format(price, self.operator, self.threshold)
         if not se.seval(expr):
             return
@@ -61,7 +74,7 @@ class Monitor:
         if not (self.threshold and self.email and self.operator):
             temp = 'threshold: %s, email: %s, operator: %s. \
                     Something not set, email not send'
-            logging.info(temp, self.threshold, self.email, self.operator)
+            logging.getLogger(currency).info(temp, self.threshold, self.email, self.operator)
             return
         
         mailopt = {}
@@ -77,13 +90,9 @@ class Monitor:
                 last_time_send_mail = datetime.now().timestamp()
                 mail.sendmail(**mailopt)
 
-
-
     def on_message(self, ws, msg):
         demsg = gzip.decompress(msg).decode('utf-8')
         data = json.loads(demsg)
-        ts = data.get('ts', datetime.now().timestamp()*1000)
-        dts = datetime.fromtimestamp(ts/1000).strftime(tsformat)
         if data.get('ping'):
             ts = data['ping']
             pong = '{{"pong": {0}}}'.format(ts)
@@ -91,8 +100,11 @@ class Monitor:
         elif data.get('tick'):
             price = self.price_format.format(data['tick'].get('close'))
             ch = data['ch'].split('.')[1]
-            logging.info('%s, %s: %s', dts, ch, price)
-            self.notify_if_exceed_threshold(price)
+            logging.getLogger(ch).info('%s: %s', ch, price)
+            self.notify_if_exceed_threshold(price, ch)
+        elif data.get('subbed'):
+            ch = data['subbed'].split('.')[1]
+            logging.getLogger(ch).info('%s: subscribe success', ch)
         else:
             logging.info('unknown message %s', demsg)
 
@@ -100,20 +112,23 @@ class Monitor:
         logging.info('on_error: %s', error)
 
     def on_close(self, ws):
-        logging.info('%s, close connection, wait 5 sec to re-connect', datetime.now().strftime(tsformat))
+        logging.info('close connection, wait 5 sec to re-connect')
         time.sleep(5)
         self.start()
 
     def on_open(self, ws):
-        self.subscribe(self.currency)
+        logging.info('open connection')
+        self.subscribe(self.currencies)
 
-    def subscribe(self, currency):
+    def subscribe(self, currencies):
         temp = '{{"sub": "market.{0}.detail", "id": "{0}.detail"}}'
-        self.ws.send(temp.format(currency))
+        for c in currencies:
+            self.ws.send(temp.format(c))
 
-    def unsubscribe(self, currency):
+    def unsubscribe(self, currencies):
         temp = '{{"unsub": "market.{0}.detail", id": "{0}.detail"}}'
-        self.ws.send(temp.format(currency))
+        for c in currencies:
+            self.ws.send(temp.format(c))
 
     def start(self):
         #websocket.enableTrace(True)
@@ -129,7 +144,7 @@ def run():
     global _CONF_PATH_
     global _LAST_MTIME_
     # while configuration file specified and exists
-    while os.path.exists(os.path.expanduser(_CONF_PATH_)):  
+    while _CONF_PATH_ and os.path.exists(os.path.expanduser(_CONF_PATH_)):  
         lastmtime = os.stat(_CONF_PATH_).st_mtime
         if lastmtime > _LAST_MTIME_:
             _LAST_MTIME_ = lastmtime
@@ -178,8 +193,13 @@ def parse_arg():
     
     """argument precedence: optional argument > config file > default"""
     parser = argparse.ArgumentParser(description='cryptocurrency monitor')
-    parser.add_argument('-c', '--currency', dest='currency', 
-            help='currency to monitor, default: '+default_currency)
+    h = """
+    Currencies to monitor, default: %s;
+    Support multiple currencies, -c c1 -c c2 ...
+    """ % default_currency
+    parser.add_argument('-c', '--currencies', action='append', 
+            dest='currencies', help=h)
+#            help='currency to monitor, default: '+default_currency)
     parser.add_argument('-f', '--price-format', dest='price_format', 
             help='price convert format, default: '+default_price_format)
     parser.add_argument('-l', '--url', dest='url', 
@@ -206,7 +226,7 @@ def parse_arg():
     config = parse_config()
 
     argdict = {
-            'currency':     default_currency,
+            'currencies':   [default_currency],
             'price_format': default_price_format,
             'url':          default_url,
             'operator':     default_operator,
