@@ -8,10 +8,10 @@ from functools import wraps
 from hmac import compare_digest as compare_hash
 from flask import Flask, session, request, redirect, url_for, escape, json
 
-if not os.environ.get('config'):
-    raise ValueError('config must specified!')
+if not os.environ.get('CONFIG'):
+    raise ValueError('CONFIG must specified!')
 
-config_path = os.path.expanduser(os.environ['config'])
+config_path = os.path.expanduser(os.environ['CONFIG'])
 rhashed=crypt.crypt(getpass.getpass())
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
