@@ -36,17 +36,19 @@ class Monitor:
                 level=logging.INFO)
 
     def reset(self, config):
-        if self.ws and self.currencies != config.get('currencies', self.currencies):
+        if self.ws and self.currencies != \
+                config.get('currencies', self.currencies):
             # currencies change, should unsubscribe then subscribe
             # but server will close connection after unsubscribe
-            # so close directly and re-conect in callback on_close
+            # so close directly and re-connect in callback on_close
             self.ws.close()
         self.config.update(config)
         self.url = self.config['url']
         self.currencies = self.config['currencies']
+        self.cid = {v:i for i, v in enumerate(self.currencies)} #currency index
         self.reset_logger()
         # {0:.2F}
-        self.price_format = '{{0:{0}}}'.format(self.config['price_format']) 
+        self.price_format = ['{{0:{0}}}'.format(p) for p in self.config['price_format'] if p]
         self.threshold = self.config['threshold']
         self.email = self.config['email']
         self.operator = self.config['operator']
@@ -61,24 +63,45 @@ class Monitor:
                 fh.setLevel(logging.INFO)
                 fh.setFormatter(formatter)
                 logger.addHandler(fh)
-            
 
+    def get_config_value(self, l, cid, default):
+        """
+        l       - value list
+        cid     - currency index
+        default - default value
+        """
+        if len(l) > cid:
+            return l[cid]
+        return default
+
+    def default(self, key):
+        """
+        return default key's value
+        key - config key
+        """
+        return self.config['default'][key]
 
     def notify_if_exceed_threshold(self, price, currency):
-        expr = '{0}{1}{2}'.format(price, self.operator, self.threshold)
+        cid = self.cid[currency]
+        op = self.get_config_value(self.operator, cid, 
+                self.default('operator'))
+        ths = self.get_config_value(self.threshold, cid, 
+                self.default('threshold'))
+        expr = '{0}{1}{2}'.format(price, op, ths)
         if not se.seval(expr):
             return
 
         if not self.config.get('notify', False):
             return
-        if not (self.threshold and self.email and self.operator):
+        if not (ths and op and self.email):
             temp = 'threshold: %s, email: %s, operator: %s. \
                     Something not set, email not send'
-            logging.getLogger(currency).info(temp, self.threshold, self.email, self.operator)
+            logging.getLogger(currency).info(temp, ths, self.email, op)
             return
         
         mailopt = {}
-        mailopt['content'] = self.config.get('mail.content', expr)
+        content = '{0}: {1}'.format(currency, expr)
+        mailopt['content'] = self.config.get('mail.content', content)
         mailopt['to'] = self.email
         global last_time_send_mail
         if not last_time_send_mail:
@@ -98,8 +121,11 @@ class Monitor:
             pong = '{{"pong": {0}}}'.format(ts)
             ws.send(pong)
         elif data.get('tick'):
-            price = self.price_format.format(data['tick'].get('close'))
             ch = data['ch'].split('.')[1]
+            cid = self.cid[ch]
+            price_format = self.get_config_value(self.price_format, cid, 
+                    self.default('price_format'))
+            price = price_format.format(data['tick'].get('close'))
             logging.getLogger(ch).info('%s: %s', ch, price)
             self.notify_if_exceed_threshold(price, ch)
         elif data.get('subbed'):
@@ -199,26 +225,41 @@ def parse_arg():
     """ % default_currency
     parser.add_argument('-c', '--currencies', action='append', 
             dest='currencies', help=h)
-#            help='currency to monitor, default: '+default_currency)
-    parser.add_argument('-f', '--price-format', dest='price_format', 
-            help='price convert format, default: '+default_price_format)
+    
+    h = """
+    Price convert format, default: %s;
+    Argument count should be same as currencies count, 
+    otherwise use default format, -f f1 -f f2 ...
+    """ % default_price_format
+    parser.add_argument('-f', '--price-format', action='append', 
+            dest='price_format', help=h)
+
+    h= """
+    Threshold price to notify, default: %s;
+    Argument count should be same as currencies count,
+    -t t1 -t t2 ...
+    """ % default_threshold
+    parser.add_argument('-t', '--threshold', action='append', 
+            dest='threshold', help=h)
+
+    h = """
+    Operator to compare threshold price, default: %s;
+    Argument count should be same as currencies count,
+    -o o1 -o o2 ...
+    """ % default_operator
+    parser.add_argument('-o', '--operator', action='append', 
+            dest='operator', choices=['>', '>=', '<', '<='], help=h)
+    parser.add_argument('-e', '--email', dest='email', 
+            help='email address to notify')
+    parser.add_argument('-n', '--notify', dest='notify', action='store_true',
+            help='If present, notify when currency price exceed threshold, \
+                    otherwise not notify')
     parser.add_argument('-l', '--url', dest='url', 
             help='api url, default: '+default_url)
     parser.add_argument('-C', '--config', dest='config', 
             help='configuration file, json format. If same argument exists \
             in config and optional augment, optional argument takes \
             precedence!')
-    parser.add_argument('-t', '--threshold', dest='threshold',
-            help='threshold price to notify, default: '+str(default_threshold))
-    parser.add_argument('-o', '--operator', dest='operator',
-            choices=['>', '>=', '<', '<='],
-            help='operator to compare threshold price, default: '
-            +default_operator)
-    parser.add_argument('-e', '--email', dest='email', 
-            help='email address to notify')
-    parser.add_argument('-n', '--notify', dest='notify', action='store_true',
-            help='If present, notify when currency price exceed threshold, \
-                    otherwise not notify')
     args = parser.parse_args()
   
     global _CONF_PATH_
@@ -227,16 +268,22 @@ def parse_arg():
 
     argdict = {
             'currencies':   [default_currency],
-            'price_format': default_price_format,
+            'price_format': [default_price_format],
             'url':          default_url,
-            'operator':     default_operator,
+            'operator':     [default_operator],
             'notify':       False,
             'email':        None,
-            'threshold':    default_threshold
+            'threshold':    [default_threshold]
             }
 
     for k, v in argdict.items():
         set_arg(args, config, k, v)
+    
+    config['default'] = {
+            'price_format': default_price_format,
+            'operator': default_operator,
+            'threshold': default_threshold
+            }
 
     return config
 
