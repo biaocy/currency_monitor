@@ -11,6 +11,7 @@ import time
 import safeeval as se
 import argparse
 import mail
+import logging
 from datetime import datetime
 try:
     import threading
@@ -18,6 +19,7 @@ except ImportError:
     import dummy_threading as threading
 
 tsformat = '%Y-%m-%d %X'
+logging_file_path='/var/log/huobi/{0}.log'
 
 class Monitor:
     def __init__(self, config):
@@ -34,11 +36,18 @@ class Monitor:
         self.config.update(config)
         self.url = self.config['url']
         self.currency = self.config['currency']
+        self.reset_logger()
         # {0:.2F}
         self.price_format = '{{0:{0}}}'.format(self.config['price_format']) 
         self.threshold = self.config['threshold']
         self.email = self.config['email']
         self.operator = self.config['operator']
+
+    def reset_logger(self):
+        logger = logging.getLogger()
+        for hdlr in logger.handlers[:]:
+            logger.removeHandler(hdlr)
+        logging.basicConfig(filename=logging_file_path.format(self.currency), format='%(message)s, %(levelname)s', level=logging.INFO)
 
     def notify_if_exceed_threshold(self, price):
         expr = '{0}{1}{2}'.format(price, self.operator, self.threshold)
@@ -48,12 +57,12 @@ class Monitor:
         if not self.config.get('notify', False):
             return
         if not (self.threshold and self.email and self.operator):
-            temp = 'threshold: {0}, email: {1}, operator: {2}. \
+            temp = 'threshold: %s, email: %s, operator: %s. \
                     Something not set, email not send'
-            print(temp.format(self.threshold, self.email, self.operator))
+            logging.info(temp, self.threshold, self.email, self.operator)
             return
         
-        print('sent mail')
+        logging.info('sent mail')
 
         #mailopt = {}
         #mailopt['content'] = self.config.get('mail.content', expr)
@@ -72,22 +81,16 @@ class Monitor:
         elif data.get('tick'):
             price = self.price_format.format(data['tick'].get('close'))
             ch = data['ch'].split('.')[1]
-            print(dts+',', ch+':', price)
+            logging.info('%s, %s: %s', dts, ch, price)
             self.notify_if_exceed_threshold(price)
-#        elif data.get('unsubbed'):
-#            print(dts+',', 'unsubbed: '+data.get('unsubbed'))
-#            time.sleep(10) # wait 10 sec to re-sub
-#            self.subscribe(self.currency)
-#        elif data.get('subbed'):
-#            print(dts+',', 'subbed: '+data.get('subbed'))
         else:
-            print('unknown message', demsg)
+            logging.info('unknown message %s', demsg)
 
     def on_error(self, ws, error):
-        print(error)
+        logging.info('on_error: %s', error)
 
     def on_close(self, ws):
-        print('{0}, close connection, wait 5 sec to re-connect'.format(datetime.now().strftime(tsformat)))
+        logging.info('%s, close connection, wait 5 sec to re-connect', datetime.now().strftime(tsformat))
         time.sleep(5)
         self.start()
 
@@ -121,7 +124,7 @@ def run():
         if lastmtime > _LAST_MTIME_:
             _LAST_MTIME_ = lastmtime
             _MONITOR_.reset(parse_config())
-            print('refresh config', _MONITOR_.config)
+            logging.info('refresh config %s', _MONITOR_.config)
         time.sleep(1)
 
 def parse_config():
@@ -213,7 +216,7 @@ if __name__ == '__main__':
     _MONITOR_ = None     # Monitor instance
 
     config = parse_arg()
-    print(config)
+    #print(config)
     _MONITOR_ = Monitor(config)
     t = threading.Thread(target=run, daemon=True)
     t.start()
