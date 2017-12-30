@@ -12,6 +12,7 @@ import safeeval as se
 import argparse
 import mail
 import logging
+import logging.handlers
 from datetime import datetime
 try:
     import threading
@@ -59,7 +60,8 @@ class Monitor:
             logger = logging.getLogger(c)
             logger.propagate = False            # disable logger propagate
             if not logger.hasHandlers():
-                fh = logging.FileHandler(logging_file_path.format(c))
+                #fh = logging.FileHandler(logging_file_path.format(c))
+                fh = logging.handlers.RotatingFileHandler(logging_file_path.format(c), maxBytes=51200, backupCount=10)
                 fh.setLevel(logging.INFO)
                 fh.setFormatter(formatter)
                 logger.addHandler(fh)
