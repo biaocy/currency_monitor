@@ -19,7 +19,9 @@ except ImportError:
     import dummy_threading as threading
 
 tsformat = '%Y-%m-%d %X'
-logging_file_path='/var/log/huobi/{0}.log'
+logging_file_path = '/var/log/huobi/{0}.log'
+last_time_send_mail = None  # last timestamp send mail
+send_mail_interval = 1800   # send mail interval(seconds)
 
 class Monitor:
     def __init__(self, config):
@@ -62,12 +64,20 @@ class Monitor:
             logging.info(temp, self.threshold, self.email, self.operator)
             return
         
-        logging.info('sent mail')
+        mailopt = {}
+        mailopt['content'] = self.config.get('mail.content', expr)
+        mailopt['to'] = self.email
+        global last_time_send_mail
+        if not last_time_send_mail:
+            last_time_send_mail = datetime.now().timestamp()
+            mail.sendmail(**mailopt)
+        else:
+            interval = datetime.now().timestamp() - last_time_send_mail
+            if interval > send_mail_interval:
+                last_time_send_mail = datetime.now().timestamp()
+                mail.sendmail(**mailopt)
 
-        #mailopt = {}
-        #mailopt['content'] = self.config.get('mail.content', expr)
-        #mailopt['to'] = self.email
-        #mail.sendmail(**mailopt)
+
 
     def on_message(self, ws, msg):
         demsg = gzip.decompress(msg).decode('utf-8')
