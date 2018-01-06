@@ -1,25 +1,15 @@
 {
-	"currencies": [
-		"btcusdt",
-		"xrpusdt",
-		"neobtc"
-	],
-	"email": "biaocy@foxmail.com",
-	"notify": false,
-	"operator": [
-		"<=",
-		"<=",
-		"<="
-	],
-	"price_format": [
-		".2F",
-		".4F",
-		".6F"
-	],
-	"threshold": [
-		"10000",
-		"1",
-		"0.004"
-	],
-	"url": "wss://api.huobi.pro/ws"
+	"currencies": {
+		"ltcusdt": {
+			"opth": {"<=": 260, ">=": 280},
+			"price_format": ".2F",
+			"notify": true
+		},
+		"xrpusdt": {
+			"opth": {"<=": 2.5, ">=": 2.7},
+			"price_format": ".4F",
+			"notify": true
+		}
+	},
+	"email": "biaocy@foxmail.com"
 }
