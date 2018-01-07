@@ -78,6 +78,9 @@ class Monitor:
             if se.seval(expr):
                 exprs.append(expr)
 
+        if not len(exprs):
+            return
+
         mailopt = {}
         mailopt['content'] = '\n'.join(exprs)
         mailopt['to'] = self.config['email']
