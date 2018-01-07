@@ -7,15 +7,19 @@ from datetime import timedelta
 from functools import wraps
 from hmac import compare_digest as compare_hash
 from flask import Flask, session, request, redirect, url_for, escape, json
+from flask import render_template
 
-if not os.environ.get('CONFIG'):
-    raise ValueError('CONFIG must specified!')
-
-config_path = os.path.expanduser(os.environ['CONFIG'])
-rhashed=crypt.crypt(getpass.getpass())
+config_path = os.path.expanduser('../config.json')
+if os.environ.get('FLASK_DEBUG') == '1':
+    rhashed=crypt.crypt('5')
+else:
+    rhashed=crypt.crypt(getpass.getpass())
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 pass_field = 'dwssap'
+symbol_path = 'symbols.json'
+with open(symbol_path) as f:
+    symbols = json.load(f)
 
 def read_config():
     with open(config_path) as f:
@@ -38,7 +42,6 @@ def login_required(f):
 def make_session_permanent():
     session.permanent = True
     app.permanent_session_lifetime = timedelta(minutes=30)
-
 
 @app.route('/', methods=['GET', 'POST'])
 def login():
@@ -64,11 +67,32 @@ def logout():
     session.pop(pass_field, None)
     return redirect(url_for('login'))
 
-@app.route('/config')
+@app.route('/config', methods=['GET', 'POST'])
 @login_required
 def showconfig():
+    bool_val = {'False': False, 'True': True}
     config = read_config()
-    return json.jsonify(config)
+    if request.method == 'POST':
+        params = list(request.form.items(multi=True))    # list of parameters(tuple(name, value))
+        c = [params.pop(params.index(t))[1] for t in params[:] if t[0] == 'currency']   # pop parameter 'currency'
+        state = [params.pop(params.index(t))[1] for t in params[:] if t[0] == 'state']     # pop parameter 'state'
+        state = {c[i]: s for i, s in enumerate(state)}  # to dict(currency: state)
+        for i in range(0, len(params), len(c)):
+            for j, k in zip(c, params[i:i+len(c)]):
+                if state[j] == 'del':   # delete currencies that state is del
+                    if config.get('currencies') and config['currencies'].get(j):
+                        del config['currencies'][j]
+                    continue
+
+                if not config.get('currencies'):
+                    config['currencies'] = {}
+                if not config['currencies'].get(j):
+                    config['currencies'][j] = {}
+                config['currencies'][j][k[0]] = k[1] if k[1].capitalize() not in bool_val else bool_val[k[1].capitalize()]
+
+        write_config(config)
+
+    return render_template('config.html', config=config, symbols=symbols)
 
 @app.route('/config/del/<string:keys>')
 @login_required

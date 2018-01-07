@@ -1,0 +1,78 @@
+<!doctype html>
+<html>
+	<head>
+		<title>config page</title>
+	</head>
+	<body>
+		<div class="template" style="display: none;">
+			<input name="currency" list="symbols" />
+			<select name="lowop">
+				<option value="<=">&lt;=</option>
+				<option value=">=">&gt;=</option>
+			</select>
+			<input type="number" step="any" name="low"/>
+			<select name="highop">
+				<option value="<=">&lt;=</option>
+				<option value=">=">&gt;=</option>
+			</select>
+			<input type="number" step="any" name="high"/>
+			price_format: <input type="text" name="price_format" />
+			notify: <input type="text" name="notify" />
+			<button type="button" onclick="updateState(this)">x</button>
+			<input type="hidden" name="state" value="add" />
+			<br/>
+			<br/>
+		</div>
+	{% if config is defined %}
+	currencies:<br/>
+		<form action="config" method="post">
+			<div class="currencies">
+			{% for k, v in config['currencies'].items() %}			
+				<div class="currency">
+					<input name="currency" list="symbols" value="{{ k }}" />
+					<select name="lowop">
+						<option value="<=" {{ 'selected' if '<=' == v.get('lowop') else '' }}>&lt;=</option>
+						<option value=">=" {{ 'selected' if '>=' == v.get('lowop') else '' }}>&gt;=</option>
+					</select>
+					<input type="number" step="any" name="low" value="{{ v.get('low', '') }}"/>
+					<select name="highop">
+						<option value="<=" {{ 'selected' if '<=' == v.get('highop') else '' }}>&lt;=</option>
+						<option value=">=" {{ 'selected' if '>=' == v.get('highop') else '' }}>&gt;=</option>
+					</select>
+					<input type="number" step="any" name="high" value="{{ v.get('high', '') }}"/>
+					price_format: <input type="text" name="price_format" value="{{ v.get('price_format', '') }}" />
+					notify: <input type="text" name="notify" value="{{ v.get('notify', false) }}" />
+					<button type="button" onclick="updateState(this)">x</button>
+					<input type="hidden" name="state" value="add" />
+					<br/>
+					<br/>
+				</div>
+			{% endfor %}
+			</div>
+			<button type="button" onclick="addCurrency()">Add currency</button>
+			<input type="submit" value="save" />
+		</form>
+		{% endif %}
+		<datalist id="symbols">
+		{% for s in symbols %}
+			<option value="{{ s }}">{{ s }}</option>
+		{% endfor%}
+		</datalist>
+	<script>
+		function updateState(btn) {
+			let stateEl = btn.parentNode.querySelector('button + input[name="state"]');
+			let isDel = stateEl.value == 'del'; // old state
+			stateEl.value = isDel ? 'add' : 'del';
+			btn.textContent = isDel ? 'x' : '+'; // display reverse state
+		}
+
+		function addCurrency() {
+			let node = document.querySelector("div.template").cloneNode(true);
+			let parent = document.querySelector("div.currencies");
+			node.removeAttribute("style");
+			node.setAttribute("class", "currency");
+			parent.appendChild(node);
+		}
+	</script>
+	</body>
+</html>

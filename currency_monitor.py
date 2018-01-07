@@ -24,12 +24,11 @@ LOGGING_FILE_PATH = '/var/log/huobi/{0}.log'
 LOGGER_FORMAT = '%(asctime)s, %(message)s, %(levelname)s'
 LAST_TIME_SEND_MAIL = {}    # last timestamp send mail
 SEND_MAIL_INTERVAL = 1800   # send mail interval(seconds)
-DEBUG = True
 
 class Monitor:
     def __init__(self, url, config):
         self.url = url
-        self.config = {}
+        self.config = config
         self.ws = None
         self.reset(config)
         # setup root logger
@@ -44,13 +43,15 @@ class Monitor:
             # currencies change, should unsubscribe then subscribe
             # but server will close connection after unsubscribe
             # so close directly and re-connect in callback on_close
+            global LAST_TIME_SEND_MAIL
+            LAST_TIME_SEND_MAIL = {}
             self.ws.close()
         self.config.update(config)
         self.reset_logger()
 
     def reset_logger(self):
         formatter = logging.Formatter(LOGGER_FORMAT, datefmt=TSFORMAT)
-        for c, v in self.config["currencies"].items():
+        for c in self.config["currencies"].keys():
             logger = logging.getLogger(c)
             logger.propagate = False            # disable logger propagate
             if not logger.hasHandlers():
@@ -65,20 +66,17 @@ class Monitor:
         c = self.config['currencies'][currency]
         if not c.get('notify', False):
             return
-        if not (c['opth'] and self.config['email']):
+        if not (self.config['email'] and (c.get('lowop') or c.get('highop'))):
             temp = 'email: %s. Something not set, email not send'
             logging.getLogger(currency).info(temp, self.config['email'])
             return
         
         exprs = []
-        for op, th in c['opth'].items():
-            expr = '{0}{1}{2}'.format(price, op, th)
+        opth = {'lowop': 'low', 'highop': 'high'}
+        for op, th in opth.items():
+            expr = '{0}{1}{2}'.format(price, c.get(op), c.get(th))
             if se.seval(expr):
-                exprs.append('{0}: {1}'.format(currency, expr))
-        
-        # currencies does not exceed threshold
-        if len(exprs) == 0:
-            return
+                exprs.append(expr)
 
         mailopt = {}
         mailopt['content'] = '\n'.join(exprs)
@@ -87,16 +85,16 @@ class Monitor:
         lasttime = LAST_TIME_SEND_MAIL.get(currency)
         if not lasttime:
             LAST_TIME_SEND_MAIL[currency] = datetime.now().timestamp()
-            if DEBUG:
-                logging.getLogger(currency).info(mailopt)
+            if self.config['debug']:
+                logging.info(mailopt)
             else:
                 mail.sendmail(**mailopt)
         else:
             interval = datetime.now().timestamp() - lasttime
             if interval > SEND_MAIL_INTERVAL:
                 LAST_TIME_SEND_MAIL[currency] = datetime.now().timestamp()
-                if DEBUG:
-                    logging.getLogger(currency).info(mailopt)
+                if self.config['debug']:
+                    logging.info(mailopt)
                 else:
                     mail.sendmail(**mailopt)
 
@@ -142,7 +140,8 @@ class Monitor:
             self.ws.send(temp.format(c))
 
     def start(self):
-        #websocket.enableTrace(True)
+        if self.config['debug']:
+            websocket.enableTrace(True)
         ws = websocket.WebSocketApp(self.url, 
                 on_open = self.on_open, 
                 on_message = self.on_message, 
@@ -181,14 +180,17 @@ def parse_config():
 
 def parse_arg():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', dest='config', required=True,
+    parser.add_argument('-c', '--config', dest='config',
+            default='config.json',
             help='configuration file, json format. See config.json.template')
+    parser.add_argument('-d', '--debug', action='store_true', 
+            dest='debug', help='Debug flag, default off')
     args = parser.parse_args()
   
     global _CONF_PATH_
     _CONF_PATH_ = args.config
     config = parse_config()
-
+    config['debug'] = args.debug
     return config
 
 if __name__ == '__main__':
