@@ -1,14 +1,20 @@
 {
 	"currencies": {
 		"ltcusdt": {
-			"opth": {"<=": 260, ">=": 280},
-			"price_format": ".2F",
-			"notify": true
+			"high": "300",
+			"highop": ">=",
+			"low": "250",
+			"lowop": "<=",
+			"notify": true,
+			"price_format": ".4F"
 		},
 		"xrpusdt": {
-			"opth": {"<=": 2.5, ">=": 2.7},
-			"price_format": ".4F",
-			"notify": true
+			"high": "3",
+			"highop": ">=",
+			"low": "2.5",
+			"lowop": "<=",
+			"notify": true,
+			"price_format": ".4F"
 		}
 	},
 	"email": "biaocy@foxmail.com"
