@@ -9,7 +9,7 @@ from hmac import compare_digest as compare_hash
 from flask import Flask, session, request, redirect, url_for, escape, json
 from flask import render_template
 
-config_path = os.path.expanduser('../config.json')
+config_path = os.path.expanduser(os.environ['CONFIG'])
 if os.environ.get('FLASK_DEBUG') == '1':
     rhashed=crypt.crypt('5')
 else:
@@ -17,7 +17,7 @@ else:
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 pass_field = 'dwssap'
-symbol_path = 'symbols.json'
+symbol_path = os.path.expanduser(os.environ['SYMBOLS'])
 with open(symbol_path) as f:
     symbols = json.load(f)
 
