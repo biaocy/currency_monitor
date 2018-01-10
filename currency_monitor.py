@@ -14,6 +14,7 @@ import mail
 import logging
 import logging.handlers
 from datetime import datetime
+from web import app
 try:
     import threading
 except ImportError:
@@ -153,56 +154,59 @@ class Monitor:
         self.ws = ws
         ws.run_forever()
 
-def run():
-    global _CONF_PATH_
+def check_config():
     global _LAST_MTIME_
     # while configuration file specified and exists
-    while _CONF_PATH_ and os.path.exists(os.path.expanduser(_CONF_PATH_)):  
-        lastmtime = os.stat(_CONF_PATH_).st_mtime
+    while os.path.exists(os.path.expanduser(CONFIG['config'])):  
+        lastmtime = os.stat(CONFIG['config']).st_mtime
         if lastmtime > _LAST_MTIME_:
             _LAST_MTIME_ = lastmtime
-            _MONITOR_.reset(parse_config())
+            parse_config()
+            _MONITOR_.reset(CONFIG)
             logging.info('refresh config %s', _MONITOR_.config)
         time.sleep(1)
 
 def parse_config():
     global _LAST_MTIME_
-    config = {}
-    if not _CONF_PATH_:
-        return config
+    global CONFIG
 
-    if not os.path.exists(os.path.expanduser(_CONF_PATH_)):
+    if not os.path.exists(os.path.expanduser(CONFIG['config'])):
         sys.exit("config file: {0}, not exists!")
     else:
         if not _LAST_MTIME_:        # first time read
-            _LAST_MTIME_ = os.stat(_CONF_PATH_).st_mtime
-        with open(_CONF_PATH_) as f:
-            config = json.load(f)
-
-    return config
+            _LAST_MTIME_ = os.stat(CONFIG['config']).st_mtime
+        with open(CONFIG['config']) as f:
+            CONFIG.update(json.load(f))
 
 def parse_arg():
+    global CONFIG
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', dest='config',
             default='config.json',
             help='configuration file, json format. See config.json.template')
+    parser.add_argument('-s', '--symbols', dest='symbols',
+            default='symbols.json',
+            help='currency symbols configuration file, json format. See symbols.json.template')
     parser.add_argument('-d', '--debug', action='store_true', 
             dest='debug', help='Debug flag, default off')
     args = parser.parse_args()
-  
-    global _CONF_PATH_
-    _CONF_PATH_ = args.config
-    config = parse_config()
-    config['debug'] = args.debug
-    return config
+
+    CONFIG['config'] = args.config
+    CONFIG['symbols'] = args.symbols
+    CONFIG['debug'] = args.debug
+
+def run_web():
+    os.environ['CONFIG'] = CONFIG['config']
+    os.environ['SYMBOLS'] = CONFIG['symbols']
+    threading.Thread(target=app.run, args=(CONFIG['debug'],), daemon=True).start()
 
 if __name__ == '__main__':
-    _CONF_PATH_ = None   # configuration file path
-    _LAST_MTIME_ = None  # configuration file last modifed time, if exists
-    _MONITOR_ = None     # Monitor instance
-
-    config = parse_arg()
-    _MONITOR_ = Monitor('wss://api.huobi.pro/ws', config)
-    t = threading.Thread(target=run, daemon=True)
-    t.start()
+    _LAST_MTIME_ = None     # configuration file last modifed time, if exists
+    _MONITOR_ = None        # Monitor instance
+    CONFIG = {}             # config dict
+    parse_arg()
+    parse_config()
+    run_web()
+    _MONITOR_ = Monitor('wss://api.huobi.pro/ws', CONFIG)
+    threading.Thread(target=check_config, daemon=True).start()
     _MONITOR_.start()

@@ -17,7 +17,11 @@
 			</select>
 			<input type="number" step="any" name="high"/>
 			price_format: <input type="text" name="price_format" />
-			notify: <input type="text" name="notify" />
+			notify:
+			<select name="notify">
+				<option value="False" selected>False</option>
+				<option value="True">True</option>
+			</select>
 			<button type="button" onclick="updateState(this)">x</button>
 			<input type="hidden" name="state" value="add" />
 			<br/>
@@ -41,7 +45,11 @@
 					</select>
 					<input type="number" step="any" name="high" value="{{ v.get('high', '') }}"/>
 					price_format: <input type="text" name="price_format" value="{{ v.get('price_format', '') }}" />
-					notify: <input type="text" name="notify" value="{{ v.get('notify', false) }}" />
+					notify: 
+					<select name="notify">
+						<option value="False" {{ 'selected' if not v.get('notify') else '' }}>False</option>
+						<option value="True" {{ 'selected' if v.get('notify') else '' }}>True</option>
+					</select>
 					<button type="button" onclick="updateState(this)">x</button>
 					<input type="hidden" name="state" value="add" />
 					<br/>

@@ -8,18 +8,30 @@ from functools import wraps
 from hmac import compare_digest as compare_hash
 from flask import Flask, session, request, redirect, url_for, escape, json
 from flask import render_template
+import logging
 
-config_path = os.path.expanduser(os.environ['CONFIG'])
-if os.environ.get('FLASK_DEBUG') == '1':
-    rhashed=crypt.crypt('5')
-else:
-    rhashed=crypt.crypt(getpass.getpass())
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 pass_field = 'dwssap'
-symbol_path = os.path.expanduser(os.environ['SYMBOLS'])
-with open(symbol_path) as f:
-    symbols = json.load(f)
+# redirect werkzeug logging
+logger = logging.getLogger('werkzeug')
+logger.propagate = False # disable werkzeug logger propagate up through hierarchy
+logger.addHandler(logging.FileHandler(filename="flask.log"))
+
+def run(debug):
+    global config_path, rhashed, symbols
+    app.debug = debug
+    config_path = os.path.expanduser(os.environ['CONFIG'])
+    symbol_path = os.path.expanduser(os.environ['SYMBOLS'])
+    if debug:
+        rhashed=crypt.crypt('5')
+    else:
+        rhashed=crypt.crypt(getpass.getpass())
+
+    with open(symbol_path) as f:
+        symbols = json.load(f)
+
+    app.run()
 
 def read_config():
     with open(config_path) as f:
