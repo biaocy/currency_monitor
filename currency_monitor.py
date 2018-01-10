@@ -186,19 +186,30 @@ def parse_arg():
             help='configuration file, json format. See config.json.template')
     parser.add_argument('-s', '--symbols', dest='symbols',
             default='symbols.json',
-            help='currency symbols configuration file, json format. See symbols.json.template')
+            help='currency symbols configuration file, json format. '+
+            'See symbols.json.template')
     parser.add_argument('-d', '--debug', action='store_true', 
             dest='debug', help='Debug flag, default off')
+    parser.add_argument('--host', dest='host', default='0.0.0.0',
+            help='flask host')
+    parser.add_argument('--port', dest='port', default='15000', type=int,
+            help='flask port')
     args = parser.parse_args()
 
     CONFIG['config'] = args.config
     CONFIG['symbols'] = args.symbols
     CONFIG['debug'] = args.debug
+    CONFIG['host'] = args.host
+    CONFIG['port'] = args.port
 
 def run_web():
     os.environ['CONFIG'] = CONFIG['config']
     os.environ['SYMBOLS'] = CONFIG['symbols']
-    threading.Thread(target=app.run, args=(CONFIG['debug'],), daemon=True).start()
+    args = {
+            'debug': CONFIG['debug'],
+            'host': CONFIG['host'],
+            'port': CONFIG['port']}
+    threading.Thread(target=app.run, kwargs=args, daemon=True).start()
 
 if __name__ == '__main__':
     _LAST_MTIME_ = None     # configuration file last modifed time, if exists

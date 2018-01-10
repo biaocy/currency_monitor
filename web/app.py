@@ -18,9 +18,8 @@ logger = logging.getLogger('werkzeug')
 logger.propagate = False # disable werkzeug logger propagate up through hierarchy
 logger.addHandler(logging.FileHandler(filename="flask.log"))
 
-def run(debug):
+def run(host=None, port=None, debug=None, **options):
     global config_path, rhashed, symbols
-    app.debug = debug
     config_path = os.path.expanduser(os.environ['CONFIG'])
     symbol_path = os.path.expanduser(os.environ['SYMBOLS'])
     if debug:
@@ -31,7 +30,7 @@ def run(debug):
     with open(symbol_path) as f:
         symbols = json.load(f)
 
-    app.run()
+    app.run(host=host, port=port, debug=debug, **options)
 
 def read_config():
     with open(config_path) as f:
