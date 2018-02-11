@@ -21,7 +21,7 @@ except ImportError:
     import dummy_threading as threading
 
 TSFORMAT = '%Y-%m-%d %X'
-LOGGING_FILE_PATH = '/var/log/huobi/{0}.log'
+LOGGING_FILE_PATH = 'log/huobi/{0}.log'
 LOGGER_FORMAT = '%(asctime)s, %(message)s, %(levelname)s'
 LAST_TIME_SEND_MAIL = {}    # last timestamp send mail
 SEND_MAIL_INTERVAL = 1800   # send mail interval(seconds)
